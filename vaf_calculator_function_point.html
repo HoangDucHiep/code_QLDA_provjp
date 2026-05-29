@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Value Adjustment Factor (VAF) Calculator</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f3f4f6; }
+        select { 
+            appearance: none; 
+            background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+            background-repeat: no-repeat;
+            background-position: right 0.5rem center;
+            background-size: 1em;
+        }
+    </style>
+</head>
+<body class="p-6 md:p-10 flex justify-center">
+
+    <div class="w-full max-w-4xl bg-white p-8 rounded-2xl shadow-lg border border-gray-200">
+        <h1 class="text-2xl font-bold text-gray-800 mb-6 border-b pb-4">Công cụ tính Value Adjustment Factor (Function Point)</h1>
+
+        <!-- Khung hiển thị tổng số -->
+        <div id="total-container" class="sticky top-4 mb-8 bg-blue-50 border-2 border-blue-200 rounded-xl p-5 flex flex-col md:flex-row md:items-center justify-between shadow-sm transition-colors duration-300 z-10">
+            <div>
+                <h2 class="text-lg font-semibold text-blue-800">Tổng điểm TDI (Total Degree of Influence):</h2>
+                <p class="text-sm text-blue-600 mt-1">Sử dụng con số này để nhập ngược lại vào phần mềm tính Function Point.</p>
+            </div>
+            <div class="text-right mt-4 md:mt-0">
+                <span id="total-score" class="text-4xl font-bold text-blue-700">0</span>
+                <span class="text-xl font-medium text-blue-400"> / 70</span>
+            </div>
+        </div>
+
+        <p class="text-sm text-gray-500 mb-4 italic">Hãy chọn giá trị từ 0 đến 5 cho 14 tiêu chí dưới đây:</p>
+
+        <!-- Bảng 14 thuộc tính -->
+        <div class="overflow-x-auto border border-gray-200 rounded-lg shadow-sm">
+            <table class="w-full text-left border-collapse min-w-[600px]">
+                <thead class="bg-gray-100 border-b border-gray-200">
+                    <tr>
+                        <th class="p-4 text-sm font-semibold text-gray-700 w-12 text-center">STT</th>
+                        <th class="p-4 text-sm font-semibold text-gray-700">Value Adjustment Factor (Yếu tố điều chỉnh)</th>
+                        <th class="p-4 text-sm font-semibold text-gray-700 w-32 text-center">Điểm (0-5)</th>
+                    </tr>
+                </thead>
+                <tbody id="vaf-tbody" class="divide-y divide-gray-100">
+                    <!-- Các hàng sẽ được tạo bằng JS -->
+                </tbody>
+            </table>
+        </div>
+
+        <div class="mt-6 flex justify-end">
+            <button onclick="resetAll()" class="px-6 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-lg transition-colors border border-gray-300 shadow-sm">
+                Đặt lại (Reset)
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // Danh sách chính xác 14 câu hỏi VAF từ hình ảnh kèm giải thích tiếng Việt
+        const factors = [
+            {
+                en: "The system requires reliable backup and recovery.",
+                vi: "Hệ thống yêu cầu khả năng sao lưu và phục hồi đáng tin cậy."
+            },
+            {
+                en: "Specialized data communications are required.",
+                vi: "Yêu cầu truyền thông dữ liệu chuyên dụng (ví dụ: giao thức mạng đặc biệt)."
+            },
+            {
+                en: "There are distributed processing functions.",
+                vi: "Hệ thống có các chức năng xử lý phân tán (xử lý trên nhiều máy chủ/nơi khác nhau)."
+            },
+            {
+                en: "Performance is critical.",
+                vi: "Hiệu suất là yếu tố then chốt (yêu cầu tốc độ xử lý hoặc thời gian phản hồi cực nhanh)."
+            },
+            {
+                en: "The system runs in an existing, heavily utilized operational environment.",
+                vi: "Hệ thống chạy trong một môi trường vận hành hiện có đang được sử dụng với cường độ cao."
+            },
+            {
+                en: "The system requires on-line data entry.",
+                vi: "Hệ thống yêu cầu người dùng nhập dữ liệu trực tuyến."
+            },
+            {
+                en: "The on-line data entry requires transactions over multiple screens/operations.",
+                vi: "Quá trình nhập dữ liệu trực tuyến đòi hỏi giao dịch thông qua nhiều màn hình/thao tác."
+            },
+            {
+                en: "ILFs are updated on-line.",
+                vi: "Các tệp logic nội bộ (ILFs - Cơ sở dữ liệu) được cập nhật trực tuyến."
+            },
+            {
+                en: "The inputs, outputs, files or inquiries are complex.",
+                vi: "Đầu vào, đầu ra, tệp dữ liệu hoặc các truy vấn của hệ thống rất phức tạp."
+            },
+            {
+                en: "The internal processing is complex.",
+                vi: "Quá trình xử lý dữ liệu và thuật toán bên trong rất phức tạp."
+            },
+            {
+                en: "The code is designed to be reusable.",
+                vi: "Mã nguồn được thiết kế để có thể tái sử dụng cho các dự án/module khác."
+            },
+            {
+                en: "Conversions /installation are included in the design.",
+                vi: "Việc chuyển đổi dữ liệu và cài đặt đã được bao gồm trong thiết kế hệ thống."
+            },
+            {
+                en: "The system is designed for multiple installations in different organizations.",
+                vi: "Hệ thống được thiết kế để có thể cài đặt nhiều lần tại các tổ chức/khách hàng khác nhau."
+            },
+            {
+                en: "The system is designed to facilitate change and ease of use.",
+                vi: "Hệ thống được thiết kế để dễ dàng thay đổi (nâng cấp) và dễ sử dụng cho người dùng."
+            }
+        ];
+
+        // Tạo bảng
+        const tbody = document.getElementById('vaf-tbody');
+        
+        factors.forEach((factor, index) => {
+            const tr = document.createElement('tr');
+            tr.className = 'hover:bg-blue-50 transition-colors';
+            
+            // Tạo dropdown 0-5
+            let optionsHtml = '';
+            for(let i = 0; i <= 5; i++) {
+                optionsHtml += `<option value="${i}">${i}</option>`;
+            }
+
+            tr.innerHTML = `
+                <td class="p-4 text-center font-semibold text-gray-500">${index + 1}</td>
+                <td class="p-4">
+                    <p class="text-gray-800 font-medium mb-1">${factor.en}</p>
+                    <p class="text-gray-500 text-sm italic">${factor.vi}</p>
+                </td>
+                <td class="p-3 text-center">
+                    <select class="val-select w-full p-2 border border-gray-300 rounded-md bg-white text-gray-700 font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer shadow-sm transition-all text-center">
+                        ${optionsHtml}
+                    </select>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        // Hàm tính toán tổng
+        function calculateTotal() {
+            let total = 0;
+            const selects = document.querySelectorAll('.val-select');
+            
+            selects.forEach(select => {
+                total += parseInt(select.value) || 0;
+            });
+
+            const totalScoreElem = document.getElementById('total-score');
+            
+            // Animation số chạy
+            animateValue(totalScoreElem, parseInt(totalScoreElem.innerText) || 0, total, 300);
+            
+            // Thay đổi màu khung cảnh báo nếu tổng điểm tăng
+            const container = document.getElementById('total-container');
+            if (total > 50) {
+                container.className = 'sticky top-4 mb-8 bg-red-50 border-2 border-red-200 rounded-xl p-5 flex flex-col md:flex-row md:items-center justify-between shadow-sm transition-colors duration-300 z-10';
+                totalScoreElem.className = 'text-4xl font-bold text-red-700';
+            } else if (total > 25) {
+                container.className = 'sticky top-4 mb-8 bg-yellow-50 border-2 border-yellow-200 rounded-xl p-5 flex flex-col md:flex-row md:items-center justify-between shadow-sm transition-colors duration-300 z-10';
+                totalScoreElem.className = 'text-4xl font-bold text-yellow-700';
+            } else {
+                container.className = 'sticky top-4 mb-8 bg-blue-50 border-2 border-blue-200 rounded-xl p-5 flex flex-col md:flex-row md:items-center justify-between shadow-sm transition-colors duration-300 z-10';
+                totalScoreElem.className = 'text-4xl font-bold text-blue-700';
+            }
+        }
+
+        // Gắn sự kiện thay đổi cho các dropdown
+        document.querySelectorAll('.val-select').forEach(select => {
+            select.addEventListener('change', calculateTotal);
+        });
+
+        // Hàm Reset
+        function resetAll() {
+            document.querySelectorAll('.val-select').forEach(select => {
+                select.value = "0";
+            });
+            calculateTotal();
+        }
+
+        // Hiệu ứng đếm số
+        function animateValue(obj, start, end, duration) {
+            let startTimestamp = null;
+            const step = (timestamp) => {
+                if (!startTimestamp) startTimestamp = timestamp;
+                const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+                obj.innerHTML = Math.floor(progress * (end - start) + start);
+                
+                if (progress < 1) {
+                    window.requestAnimationFrame(step);
+                } else {
+                    obj.innerHTML = end;
+                }
+            };
+            window.requestAnimationFrame(step);
+        }
+
+        // Tính lần đầu
+        calculateTotal();
+    </script>
+</body>
+</html>

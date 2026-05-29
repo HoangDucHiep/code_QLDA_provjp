@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hệ thống Phân tích PERT/Gantt Chuyên sâu (O-M-P)</title>
+    <!-- Tailwind CSS cho giao diện -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Vis-Network cho biểu đồ PERT -->
+    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f8fafc; }
+        #pert-network { width: 100%; height: 500px; border: 1px solid #cbd5e1; border-radius: 0.75rem; background-color: white; }
+        
+        /* CSS cho SVG Gantt Chart */
+        svg.gantt { width: 100%; height: auto; background: white; border: 1px solid #cbd5e1; border-radius: 0.75rem; }
+        .axis-line { stroke: #3b82f6; stroke-width: 2; }
+        .grid-line { stroke: #e2e8f0; stroke-width: 1; }
+        .text-label { font-size: 14px; fill: #1e293b; font-family: 'Segoe UI', Tahoma, sans-serif; }
+        .text-dur { font-size: 12px; font-weight: bold; }
+
+        /* Input Table Styles */
+        .input-cell { width: 100%; border: 1px solid #cbd5e1; border-radius: 0.375rem; padding: 0.5rem; outline: none; transition: all 0.2s; }
+        .input-cell:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
+        .readonly-cell { background-color: #f1f5f9; cursor: not-allowed; font-weight: 600; text-align: center; }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+
+    <div class="max-w-7xl mx-auto space-y-8">
+        
+        <!-- Header -->
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+            <h1 class="text-3xl font-bold text-gray-800 mb-2">Hệ thống Lập Kế Hoạch Dự Án AI (PERT 3 Điểm)</h1>
+            <p class="text-gray-600">Hỗ trợ tính toán Thời gian kỳ vọng (TE), Phương sai, Độ lệch chuẩn với cơ chế làm tròn 2 chữ số thập phân chuẩn Excel.</p>
+            
+            <div class="mt-4 flex flex-wrap gap-4 text-sm font-medium">
+                <div class="flex items-center gap-2"><span class="w-4 h-4 bg-red-500 inline-block rounded"></span> Tới hạn (Critical)</div>
+                <div class="flex items-center gap-2"><span class="w-4 h-4 bg-yellow-500 inline-block rounded"></span> Bình thường</div>
+                <div class="flex items-center gap-2"><span class="w-4 h-4 bg-orange-400 inline-block rounded border border-orange-500 border-dashed"></span> Thời gian dự trữ (Slack)</div>
+                <div class="flex items-center gap-2">
+                    <svg width="24" height="10"><path d="M 0 5 Q 3 1, 6 5 T 12 5 Q 15 1, 18 5 T 24 5" stroke="#10b981" stroke-width="2" fill="none"/></svg>
+                    Lịch thực tế (San phẳng Nguồn lực)
+                </div>
+            </div>
+        </div>
+
+        <!-- Section 0: Input Data -->
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+            <h2 class="text-xl font-bold text-gray-800 mb-4">Nhập dữ liệu đầu vào (O, M, P)</h2>
+            <div id="error-msg" class="hidden mb-4 p-4 bg-red-50 text-red-700 rounded-xl border border-red-200 font-medium"></div>
+            
+            <div class="overflow-x-auto rounded-xl border border-gray-200">
+                <table id="input-table" class="w-full text-left border-collapse min-w-[900px]">
+                    <thead>
+                        <tr class="bg-gray-50 border-b">
+                            <th class="p-3 w-32">ID</th>
+                            <th class="p-3 w-24 text-center">Tối ưu (O)</th>
+                            <th class="p-3 w-24 text-center">Thường (M)</th>
+                            <th class="p-3 w-24 text-center">Bi quan (P)</th>
+                            <th class="p-3 w-28 text-center text-blue-700">Kỳ vọng (TE)</th>
+                            <th class="p-3 w-28 text-center text-purple-700">Phương sai</th>
+                            <th class="p-3 w-28 text-center text-teal-700">Đ.L Chuẩn</th>
+                            <th class="p-3">Công việc trước</th>
+                            <th class="p-3 w-16 text-center">Xóa</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-body" class="divide-y divide-gray-100">
+                        <!-- Rows -->
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="mt-5 flex gap-3">
+                <button onclick="addRow()" class="px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-xl transition">
+                    + Thêm công việc
+                </button>
+                <button onclick="processData()" class="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition shadow-md shadow-blue-200">
+                    Tính toán & Vẽ sơ đồ
+                </button>
+            </div>
+        </div>
+
+        <!-- Section 1: PERT Chart -->
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+            <h2 class="text-xl font-bold text-gray-800 mb-4">1. Sơ đồ Mạng PERT & Đường Tới Hạn</h2>
+            <div class="text-sm text-gray-600 mb-4 p-4 bg-blue-50/50 border border-blue-100 rounded-xl">
+                <strong>Chú giải các chỉ số:</strong><br>
+                <span class="text-yellow-700 font-semibold">Dòng trên:</span> Bắt đầu sớm nhất (ES), Kết thúc sớm nhất (EF) || Thời gian dự trữ (Slack).<br>
+                <span class="text-blue-700 font-semibold">Bên trong:</span> Tên công việc, Thời gian kỳ vọng (TE).<br>
+                <span class="text-yellow-700 font-semibold">Dòng dưới:</span> Bắt đầu muộn nhất (LS), Kết thúc muộn nhất (LF).
+            </div>
+            <div id="pert-network"></div>
+        </div>
+
+        <!-- Section 2: Gantt Chart -->
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 overflow-x-auto">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-xl font-bold text-gray-800">2. Biểu đồ Gantt & San phẳng Tài nguyên</h2>
+            </div>
+            <div id="resource-info-msg" class="hidden mb-4 p-5 bg-emerald-50 text-emerald-800 rounded-xl border border-emerald-200 font-medium text-base shadow-sm"></div>
+            <div id="svg-gantt-container" class="w-full min-w-[900px]"></div>
+        </div>
+
+    </div>
+
+    <script>
+        // --- 1. DATA KHỞI TẠO BÀI TẬP CỦA BẠN ---
+        const defaultData = [
+            { id: 'A', o: 4, m: 7, p: 12, pre: '' },
+            { id: 'B', o: 3, m: 5, p: 8, pre: '' },
+            { id: 'C', o: 10, m: 14, p: 20, pre: 'A' },
+            { id: 'D', o: 6, m: 10, p: 16, pre: '' },
+            { id: 'E', o: 16, m: 24, p: 36, pre: 'C' },
+            { id: 'F', o: 6, m: 9, p: 15, pre: 'E' },
+            { id: 'G', o: 5, m: 8, p: 12, pre: 'D' },
+            { id: 'H', o: 7, m: 11, p: 17, pre: 'F, G' },
+            { id: 'I', o: 6, m: 10, p: 16, pre: 'H' },
+            { id: 'J', o: 4, m: 7, p: 11, pre: 'B, I' }
+        ];
+
+        // --- 2. QUẢN LÝ BẢNG & LÀM TRÒN (Trị tuyệt đối chuẩn Excel) ---
+        function round2(num) {
+            return Math.round(num * 100) / 100;
+        }
+
+        // Đảm bảo hiển thị luôn có 2 chữ số (vd: 9.50)
+        function formatVal(num) {
+            return Number(num).toFixed(2);
+        }
+
+        function calcRow(inputElem) {
+            const row = inputElem.closest('tr');
+            const o = parseFloat(row.querySelector('.col-o').value) || 0;
+            const m = parseFloat(row.querySelector('.col-m').value) || 0;
+            const p = parseFloat(row.querySelector('.col-p').value) || 0;
+
+            if (o > 0 || m > 0 || p > 0) {
+                // Tính TE và SD rồi làm tròn NGAY LẬP TỨC
+                let te = round2((o + 4 * m + p) / 6);
+                let sd = round2((p - o) / 6);
+                
+                // Bình phương biến SD đã được làm tròn để tính Phương sai
+                let variance = round2(sd * sd);
+
+                row.querySelector('.col-te').innerText = formatVal(te);
+                row.querySelector('.col-var').innerText = formatVal(variance);
+                row.querySelector('.col-sd').innerText = formatVal(sd);
+            }
+        }
+
+        function addRow(id = '', o = '', m = '', p = '', pre = '') {
+            const tbody = document.getElementById('table-body');
+            const tr = document.createElement('tr');
+            tr.className = 'hover:bg-slate-50 transition-colors';
+            
+            tr.innerHTML = `
+                <td class="p-2"><input type="text" class="input-cell col-id font-bold uppercase text-center" value="${id}"></td>
+                <td class="p-2"><input type="number" step="0.1" class="input-cell col-o text-center" value="${o}" oninput="calcRow(this)"></td>
+                <td class="p-2"><input type="number" step="0.1" class="input-cell col-m text-center" value="${m}" oninput="calcRow(this)"></td>
+                <td class="p-2"><input type="number" step="0.1" class="input-cell col-p text-center" value="${p}" oninput="calcRow(this)"></td>
+                <td class="p-2 col-te readonly-cell text-blue-700 rounded-md border border-slate-200">-</td>
+                <td class="p-2 col-var readonly-cell text-purple-700 rounded-md border border-slate-200">-</td>
+                <td class="p-2 col-sd readonly-cell text-teal-700 rounded-md border border-slate-200">-</td>
+                <td class="p-2"><input type="text" class="input-cell col-pre uppercase" value="${pre}"></td>
+                <td class="p-2 text-center"><button onclick="this.closest('tr').remove()" class="text-red-400 hover:text-red-600 font-bold p-2 text-xl">&times;</button></td>
+            `;
+            tbody.appendChild(tr);
+            if(o && m && p) calcRow(tr.querySelector('.col-o'));
+        }
+
+        function initTable() {
+            document.getElementById('table-body').innerHTML = '';
+            defaultData.forEach(d => addRow(d.id, d.o, d.m, d.p, d.pre));
+        }
+
+        // --- 3. MÔ PHỎNG SỰ KIỆN RỜI RẠC CHO SỐ THẬP PHÂN ---
+        function optimizeResources(tasks, projectDuration) {
+            let totalWork = tasks.reduce((sum, t) => sum + t.dur, 0);
+            let minR = Math.ceil(totalWork / projectDuration) || 1; 
+            let maxR = tasks.length; 
+            let bestSchedule = null;
+            let actualMinR = maxR;
+
+            for (let R = minR; R <= maxR; R++) {
+                let schedule = simulateSchedule(tasks, projectDuration, R);
+                if (schedule !== null) {
+                    actualMinR = R;
+                    bestSchedule = schedule;
+                    break; 
+                }
+            }
+
+            if (bestSchedule) {
+                tasks.forEach(t => {
+                    t.optStart = bestSchedule[t.id].start;
+                    t.optFinish = bestSchedule[t.id].finish;
+                    t.resource = bestSchedule[t.id].res;
+                });
+            }
+            return actualMinR;
+        }
+
+        function simulateSchedule(tasks, projectDuration, R) {
+            let schedule = {};
+            let activeTasks = [];
+            let completedTasks = new Set();
+            let resourcePool = [];
+            for (let i = 0; i < R; i++) resourcePool.push(`Ng ${String.fromCharCode(65 + i)}`);
+
+            let currentTime = 0;
+            let maxLoops = tasks.length * 5; 
+            let loops = 0;
+
+            while (completedTasks.size < tasks.length && loops < maxLoops) {
+                loops++;
+                
+                let newlyCompleted = activeTasks.filter(a => a.finishTime <= currentTime + 0.001);
+                newlyCompleted.forEach(a => {
+                    completedTasks.add(a.task.id);
+                    resourcePool.push(a.resId);
+                });
+                activeTasks = activeTasks.filter(a => a.finishTime > currentTime + 0.001);
+
+                let readyTasks = tasks.filter(t =>
+                    !completedTasks.has(t.id) &&
+                    !activeTasks.some(a => a.task.id === t.id) &&
+                    !schedule[t.id] &&
+                    t.pre.every(p => completedTasks.has(p))
+                );
+
+                readyTasks.sort((a, b) => a.ls - b.ls);
+                resourcePool.sort(); 
+
+                while (readyTasks.length > 0 && resourcePool.length > 0) {
+                    let t = readyTasks.shift();
+                    let res = resourcePool.shift();
+                    let finishTime = round2(currentTime + t.dur);
+                    activeTasks.push({task: t, finishTime: finishTime, resId: res});
+                    schedule[t.id] = { start: currentTime, finish: finishTime, res: res };
+                }
+
+                if (completedTasks.size === tasks.length) break;
+
+                if (activeTasks.length > 0) {
+                    currentTime = Math.min(...activeTasks.map(a => a.finishTime));
+                } else {
+                    if (readyTasks.length === 0) break; // Deadlock
+                }
+            }
+
+            let maxFinish = Math.max(...Object.values(schedule).map(s => s.finish));
+            if (completedTasks.size === tasks.length && maxFinish <= projectDuration + 0.05) {
+                return schedule; 
+            }
+            return null; 
+        }
+
+        // --- 4. THUẬT TOÁN ĐƯỜNG TỚI HẠN (CPM) ---
+        function processData() {
+            try {
+                let rawTasks = [];
+                const rows = document.querySelectorAll('#input-table tbody tr');
+                
+                rows.forEach(row => {
+                    let id = row.querySelector('.col-id').value.trim().toUpperCase();
+                    let teText = row.querySelector('.col-te').innerText;
+                    let preStr = row.querySelector('.col-pre').value.trim().toUpperCase();
+                    
+                    if (id && teText !== '-') {
+                        let dur = parseFloat(teText);
+                        let pre = preStr ? preStr.split(',').map(s => s.trim()).filter(s => s) : [];
+                        rawTasks.push({ id, dur, pre, es: 0, ef: 0, ls: 0, lf: 0, crit: false });
+                    }
+                });
+
+                if (rawTasks.length === 0) throw new Error("Vui lòng nhập số liệu hợp lệ!");
+
+                rawTasks.forEach(t => {
+                    t.pre.forEach(p => {
+                        if (!rawTasks.find(x => x.id === p)) throw new Error(`Ràng buộc '${p}' không tồn tại!`);
+                    });
+                });
+
+                let inDegree = {};
+                let adj = {};
+                rawTasks.forEach(t => { inDegree[t.id] = t.pre.length; adj[t.id] = []; });
+                rawTasks.forEach(t => { t.pre.forEach(p => { adj[p].push(t.id); }); });
+                
+                let q = rawTasks.filter(t => inDegree[t.id] === 0).map(t => t.id);
+                let sortedIds = [];
+                while(q.length > 0) {
+                    let u = q.shift();
+                    sortedIds.push(u);
+                    adj[u].forEach(v => {
+                        inDegree[v]--;
+                        if(inDegree[v] === 0) q.push(v);
+                    });
+                }
+                
+                if (sortedIds.length !== rawTasks.length) throw new Error("Phát hiện vòng lặp (Cycle)!");
+                let tasks = sortedIds.map(id => rawTasks.find(t => t.id === id));
+
+                // Forward Pass (Có làm tròn)
+                tasks.forEach(t => {
+                    let maxEF = 0;
+                    t.pre.forEach(pId => {
+                        let p = tasks.find(x => x.id === pId);
+                        if (p.ef > maxEF) maxEF = p.ef;
+                    });
+                    t.es = round2(maxEF);
+                    t.ef = round2(t.es + t.dur);
+                });
+
+                const projectDuration = Math.max(...tasks.map(t => t.ef));
+
+                // Backward Pass (Có làm tròn)
+                let revTasks = [...tasks].reverse();
+                revTasks.forEach(t => {
+                    let successors = tasks.filter(x => x.pre.includes(t.id));
+                    if (successors.length === 0) {
+                        t.lf = projectDuration;
+                    } else {
+                        t.lf = Math.min(...successors.map(x => x.ls));
+                    }
+                    t.ls = round2(t.lf - t.dur);
+                    t.crit = Math.abs(t.es - t.ls) < 0.01;
+                });
+
+                let minResources = optimizeResources(tasks, projectDuration);
+                
+                const criticalTasks = tasks.filter(t => t.crit);
+                let projectVar = 0;
+                rows.forEach(row => {
+                    let id = row.querySelector('.col-id').value.trim().toUpperCase();
+                    if(criticalTasks.some(ct => ct.id === id)) {
+                        projectVar += parseFloat(row.querySelector('.col-var').innerText) || 0;
+                    }
+                });
+                projectVar = round2(projectVar);
+                let projectSD = round2(Math.sqrt(projectVar));
+
+                let resMsg = document.getElementById('resource-info-msg');
+                resMsg.innerHTML = `
+                    <div class="flex items-center gap-2 mb-2"><span class="text-xl">🏆</span> <strong>Đường tới hạn:</strong> ${criticalTasks.map(t=>t.id).join(' &rarr; ')}</div>
+                    <ul class="list-disc pl-8 space-y-1 mt-2">
+                        <li><strong>Tổng thời gian dự án (TE):</strong> ${formatVal(projectDuration)} ngày</li>
+                        <li><strong>Phương sai dự án:</strong> ${formatVal(projectVar)}</li>
+                        <li><strong>Độ lệch chuẩn dự án:</strong> ${formatVal(projectSD)}</li>
+                        <li><strong>Tối ưu hóa:</strong> Cần tối thiểu <strong>${minResources} người</strong> để hoàn thành chuẩn tiến độ.</li>
+                    </ul>`;
+                resMsg.classList.remove('hidden');
+
+                document.getElementById('error-msg').classList.add('hidden');
+                drawPert(tasks, projectDuration);
+                buildSVGGantt(rawTasks, projectDuration); 
+
+            } catch (err) {
+                let errMsg = document.getElementById('error-msg');
+                errMsg.innerText = "Lỗi: " + err.message;
+                errMsg.classList.remove('hidden');
+                document.getElementById('resource-info-msg').classList.add('hidden');
+            }
+        }
+
+        // --- 5. VẼ PERT CÓ THÔNG SỐ TOÁN HỌC ---
+        function createPertNodeSvg(t) {
+            const isCrit = t.crit;
+            const strokeColor = isCrit ? '%23ef4444' : '%233b82f6'; 
+            const textColor = '%23b45309'; 
+            const idColor = isCrit ? '%23ef4444' : '%231e40af';
+            const slack = round2(t.lf - t.ef);
+
+            // Strip trailing zeros cho việc hiển thị gọn trên node
+            const fmt = n => Number(n).toString();
+
+            const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='160' height='100'>
+                <text x='80' y='20' font-family='Segoe UI, Tahoma, sans-serif' font-size='14' font-weight='bold' fill='${textColor}' text-anchor='middle'>${fmt(t.es)}, ${fmt(t.ef)} || ${fmt(slack)}</text>
+                <ellipse cx='80' cy='50' rx='42' ry='22' fill='white' stroke='${strokeColor}' stroke-width='2.5'/>
+                <text x='80' y='55' font-family='Segoe UI, Tahoma, sans-serif' font-size='16' font-weight='bold' fill='${idColor}' text-anchor='middle'>${t.id}, ${fmt(t.dur)}</text>
+                <text x='80' y='90' font-family='Segoe UI, Tahoma, sans-serif' font-size='14' font-weight='bold' fill='${textColor}' text-anchor='middle'>${fmt(t.ls)}, ${fmt(t.lf)}</text>
+            </svg>`;
+            return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+        }
+
+        let network = null;
+        function drawPert(tasks, projectDuration) {
+            const fmt = n => Number(n).toString();
+            const startSvgStr = `<svg xmlns='http://www.w3.org/2000/svg' width='60' height='100'>
+                <text x='30' y='15' font-family='Segoe UI, Tahoma, sans-serif' font-size='14' font-weight='bold' fill='#d97706' text-anchor='middle'>0</text>
+                <polygon points='30,22 58,50 30,78 2,50' fill='white' stroke='#3b82f6' stroke-width='2'/>
+                <text x='30' y='57' font-family='Segoe UI, Tahoma, sans-serif' font-size='20' font-weight='bold' fill='#eab308' text-anchor='middle'>S</text>
+            </svg>`;
+            
+            const endSvgStr = `<svg xmlns='http://www.w3.org/2000/svg' width='60' height='100'>
+                <text x='30' y='15' font-family='Segoe UI, Tahoma, sans-serif' font-size='14' font-weight='bold' fill='#d97706' text-anchor='middle'>${fmt(projectDuration)}</text>
+                <polygon points='30,22 58,50 30,78 2,50' fill='white' stroke='#3b82f6' stroke-width='2'/>
+                <text x='30' y='57' font-family='Segoe UI, Tahoma, sans-serif' font-size='20' font-weight='bold' fill='#eab308' text-anchor='middle'>E</text>
+            </svg>`;
+
+            const nodesArr = [
+                { id: 'START', shape: 'image', image: "data:image/svg+xml;charset=utf-8," + encodeURIComponent(startSvgStr) },
+                ...tasks.map(t => ({ id: t.id, shape: 'image', image: createPertNodeSvg(t) })),
+                { id: 'END', shape: 'image', image: "data:image/svg+xml;charset=utf-8," + encodeURIComponent(endSvgStr) }
+            ];
+
+            const edgesArr = [];
+            let startTasks = tasks.filter(t => t.pre.length === 0);
+            let endTasks = tasks.filter(t => !tasks.some(x => x.pre.includes(t.id)));
+
+            startTasks.forEach(t => edgesArr.push({ from: 'START', to: t.id, color: { color: t.crit ? '#ef4444' : '#94a3b8' }, width: t.crit ? 3 : 2, arrows: 'to' }));
+
+            tasks.forEach(t => {
+                t.pre.forEach(p => {
+                    const isCritEdge = t.crit && tasks.find(x => x.id === p).crit;
+                    edgesArr.push({ from: p, to: t.id, arrows: 'to', color: isCritEdge ? { color: '#ef4444' } : { color: '#94a3b8' }, width: isCritEdge ? 3 : 2, smooth: { type: 'cubicBezier', forceDirection: 'horizontal', roundness: 0.4 } });
+                });
+            });
+
+            endTasks.forEach(from => edgesArr.push({ from: from.id, to: 'END', color: { color: from.crit ? '#ef4444' : '#94a3b8' }, width: from.crit ? 3 : 2, arrows: 'to' }));
+
+            const container = document.getElementById('pert-network');
+            const data = { nodes: new vis.DataSet(nodesArr), edges: new vis.DataSet(edgesArr) };
+            const options = { layout: { hierarchical: { direction: 'LR', sortMethod: 'directed', nodeSpacing: 140, levelSeparation: 180 } }, physics: false };
+            
+            if (network) network.destroy();
+            network = new vis.Network(container, data, options);
+        }
+
+        // --- 6. VẼ BIỂU ĐỒ GANTT ---
+        function buildSVGGantt(tasks, projectDuration) {
+            const padLeft = 60;
+            const padRight = 80;
+            const padTop = 30;
+            const rowHeight = 45;
+            const dayWidth = 20; 
+            const width = Math.max(1000, padLeft + padRight + Math.ceil(projectDuration) * dayWidth);
+            const height = tasks.length * rowHeight + 80;
+            const fmt = n => Number(n).toString();
+
+            let svg = `<svg class="gantt" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">`;
+            
+            svg += `<line x1="${padLeft}" y1="${padTop}" x2="${padLeft}" y2="${height - 40}" class="axis-line"/>`; 
+            svg += `<line x1="${padLeft}" y1="${height - 40}" x2="${width - padRight + 20}" y2="${height - 40}" class="axis-line"/>`; 
+            svg += `<polygon points="${padLeft-5},${padTop} ${padLeft+5},${padTop} ${padLeft},${padTop-10}" fill="#3b82f6"/>`;
+            svg += `<polygon points="${width - padRight + 20},${height - 45} ${width - padRight + 20},${height - 35} ${width - padRight + 30},${height - 40}" fill="#3b82f6"/>`;
+
+            let totalDays = Math.ceil(projectDuration);
+            for(let day = 0; day <= totalDays + 5; day += 5) {
+                if (day === 0) continue;
+                let x = padLeft + day * dayWidth;
+                if(x < width - padRight + 20) {
+                    svg += `<line x1="${x}" y1="${padTop}" x2="${x}" y2="${height - 40}" class="grid-line" stroke-dasharray="4,4"/>`;
+                    svg += `<text x="${x}" y="${height - 20}" text-anchor="middle" class="text-label" fill="#64748b">${day}</text>`;
+                }
+            }
+            let endX = padLeft + projectDuration * dayWidth;
+            svg += `<line x1="${endX}" y1="${padTop}" x2="${endX}" y2="${height - 40}" stroke="#ef4444" stroke-width="1.5" stroke-dasharray="6,4"/>`;
+            svg += `<text x="${endX}" y="${height - 20}" text-anchor="middle" font-size="14" font-weight="bold" fill="#ef4444">${fmt(projectDuration)}</text>`;
+
+            tasks.forEach((t, i) => {
+                let y = padTop + 20 + i * rowHeight;
+                
+                svg += `<text x="${padLeft - 20}" y="${y + 5}" text-anchor="end" class="text-label" fill="#1e3a8a" font-weight="bold">${t.id}</text>`;
+                svg += `<text x="${padLeft + projectDuration * dayWidth + 30}" y="${y + 5}" text-anchor="start" class="text-label" fill="#475569">${t.resource}</text>`;
+
+                let xES = padLeft + t.es * dayWidth;
+                let xEF = padLeft + t.ef * dayWidth;
+                let xLF = padLeft + t.lf * dayWidth;
+
+                let strokeColor = t.crit ? '#ef4444' : '#eab308'; 
+                svg += `<line x1="${xES}" y1="${y}" x2="${xEF}" y2="${y}" stroke="${strokeColor}" stroke-width="3" stroke-linecap="round"/>`;
+                svg += `<text x="${(xES + xEF)/2}" y="${y - 8}" text-anchor="middle" class="text-dur" fill="${strokeColor}">${fmt(t.dur)}</text>`;
+
+                if (t.lf > t.ef + 0.01) { 
+                    svg += `<line x1="${xEF}" y1="${y}" x2="${xLF}" y2="${y}" stroke="#f97316" stroke-width="2" stroke-dasharray="6,4"/>`;
+                    let slack = round2(t.lf - t.ef);
+                    svg += `<text x="${(xEF + xLF)/2}" y="${y - 8}" text-anchor="middle" class="text-dur" fill="#f97316">${fmt(slack)}</text>`;
+                }
+
+                if (t.optStart !== undefined && Math.abs(t.optStart - t.es) > 0.01) {
+                    let waveX1 = padLeft + t.optStart * dayWidth;
+                    let waveX2 = padLeft + t.optFinish * dayWidth;
+                    if(waveX2 > waveX1) {
+                        let path = `M ${waveX1} ${y+14}`;
+                        let wStep = 5;
+                        for (let wx = waveX1; wx < waveX2; wx += wStep*2) {
+                            if (wx + wStep*2 <= waveX2) {
+                                path += ` Q ${wx + wStep/2} ${y+14 - 4}, ${wx + wStep} ${y+14} T ${wx + wStep*2} ${y+14}`;
+                            } else {
+                                path += ` L ${waveX2} ${y+14}`;
+                            }
+                        }
+                        svg += `<path d="${path}" stroke="#10b981" stroke-width="2" fill="none"/>`;
+                    }
+                }
+            });
+
+            svg += `</svg>`;
+            document.getElementById('svg-gantt-container').innerHTML = svg;
+        }
+
+        window.onload = () => {
+            initTable();
+            processData();
+        };
+    </script>
+</body>
+</html>

@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EVM Calculator - Trình giải bài tập Quản lý dự án</title>
+    <!-- Tailwind CSS cho giao diện -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Cấu hình MathJax -->
+    <script>
+        window.MathJax = {
+            tex: {
+                inlineMath: [['\\(', '\\)']],
+                displayMath: [['\\[', '\\]']]
+            },
+            startup: {
+                typeset: false // Tắt tự động render lúc load, sẽ gọi bằng tay sau khi gen HTML
+            }
+        };
+    </script>
+    <!-- Tải thư viện MathJax -->
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f3f4f6; }
+        .math-result { font-size: 1.1rem; line-height: 1.8; color: #1f2937; }
+        .math-result p { margin-bottom: 0.75rem; }
+        .math-result ul { list-style-type: none; padding-left: 0; }
+        .math-result li { margin-bottom: 1.25rem; }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+
+    <div class="max-w-4xl mx-auto space-y-6">
+        <!-- Header -->
+        <div class="text-center">
+            <h1 class="text-3xl font-bold text-blue-700 mb-2">EVM Auto-Solver</h1>
+            <p class="text-gray-600">Công cụ tự động giải bài tập Earned Value Management</p>
+        </div>
+
+        <!-- Form nhập liệu -->
+        <div class="bg-white p-6 rounded-xl shadow-md border border-gray-200">
+            <h2 class="text-xl font-semibold mb-4 text-gray-800 border-b pb-2">Nhập Dữ Liệu Dự Án</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1" title="Tổng ngân sách dự án">BAC (Budget at Completion)</label>
+                    <input type="number" id="input-bac" value="200000" class="w-full p-2 border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500">
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1" title="Thời gian kế hoạch hoàn thành">TTC (Time To Complete / Plan)</label>
+                    <input type="number" id="input-ttc" value="6" class="w-full p-2 border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1" title="Giá trị theo kế hoạch">PV (Planned Value)</label>
+                    <input type="number" id="input-pv" value="90000" class="w-full p-2 border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1" title="Chi phí thực tế">AC (Actual Cost)</label>
+                    <input type="number" id="input-ac" value="96000" class="w-full p-2 border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1" title="Giá trị đạt được">EV (Earned Value)</label>
+                    <input type="number" id="input-ev" value="80000" class="w-full p-2 border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500">
+                </div>
+
+            </div>
+            
+            <div class="mt-6 flex justify-center">
+                <button onclick="calculateEVM()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-lg shadow transition duration-200 flex items-center">
+                    <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+                    Tính toán & Giải chi tiết
+                </button>
+            </div>
+        </div>
+
+        <!-- Khung hiển thị lời giải -->
+        <div id="solution-container" class="bg-white p-6 md:p-10 rounded-xl shadow-md border border-gray-200 hidden">
+            <h2 class="text-2xl font-bold mb-6 text-gray-800 border-b pb-2 text-center">Lời Giải Chi Tiết</h2>
+            <div id="solution-content" class="math-result">
+                <!-- Nội dung sẽ được render ở đây -->
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // Hàm format số cho đẹp (VD: 200000 -> 200.000)
+        function fNum(num, decimals = 0) {
+            // Sử dụng locale 'de-DE' để có dấu chấm phân cách hàng nghìn, dấu phẩy thập phân (giống VN)
+            // Hoặc 'en-US' cho chuẩn quốc tế. Theo prompt của bạn dùng 200.000, ta dùng hàm replace cho chắc chắn.
+            if (!Number.isFinite(num)) return num;
+            let formatted = parseFloat(num.toFixed(decimals)).toLocaleString('en-US');
+            // Chuyển dấu phẩy thành dấu chấm để giống định dạng VN trong prompt
+            return formatted.replace(/,/g, '.');
+        }
+
+        // Hàm format số thập phân (VD: 0.8889)
+        function fDec(num, decimals = 4) {
+            if (!Number.isFinite(num)) return num;
+            return parseFloat(num.toFixed(decimals));
+        }
+
+        function calculateEVM() {
+            // 1. Lấy dữ liệu đầu vào
+            const BAC = parseFloat(document.getElementById('input-bac').value) || 0;
+            const TTC = parseFloat(document.getElementById('input-ttc').value) || 0;
+            const PV = parseFloat(document.getElementById('input-pv').value) || 0;
+            const AC = parseFloat(document.getElementById('input-ac').value) || 0;
+            const EV = parseFloat(document.getElementById('input-ev').value) || 0;
+
+            // 2. Tính toán
+            const SV = EV - PV;
+            const CV = EV - AC;
+            const SPI = PV !== 0 ? EV / PV : 0;
+            const CPI = AC !== 0 ? EV / AC : 0;
+            const ETAC = SPI !== 0 ? TTC / SPI : 0;
+            const EAC = CPI !== 0 ? BAC / CPI : 0;
+
+            // 3. Logic Đánh giá động (Bao quát 3 trường hợp: Âm, Dương, Bằng 0 / Nhỏ hơn, Lớn hơn, Bằng 1)
+            let svStatus = SV < 0 ? "chậm tiến độ" : (SV > 0 ? "vượt tiến độ" : "đúng tiến độ");
+            let cvStatus = CV < 0 ? "vượt ngân sách" : (CV > 0 ? "tiết kiệm ngân sách" : "đúng ngân sách");
+            
+            let cpiText = "";
+            if (CPI < 1 && CPI > 0) {
+                // Tính % giống logic thủ công (100% - CPI%)
+                cpiText = `Dự án đang vượt ngân sách tương đối khoảng <strong>${fDec((1 - CPI) * 100, 2)}%</strong>.`;
+            } else if (CPI > 1) {
+                cpiText = `Dự án đang tiết kiệm chi phí, hiệu suất vượt mức <strong>${fDec((CPI - 1) * 100, 2)}%</strong>.`;
+            } else {
+                cpiText = `Dự án đang sử dụng ngân sách đúng như dự kiến.`;
+            }
+
+            let spiText = "";
+            if (SPI < 1 && SPI > 0) {
+                spiText = `Dự án mới đạt được <strong>${fDec(SPI * 100, 2)}%</strong> so với kế hoạch đề ra.`;
+            } else if (SPI > 1) {
+                spiText = `Dự án đang vượt kế hoạch, đạt <strong>${fDec(SPI * 100, 2)}%</strong>.`;
+            } else {
+                spiText = `Dự án đang hoàn thành đúng 100% tiến độ đề ra.`;
+            }
+            
+            let etacDiff = ETAC - TTC;
+            let etacText = "";
+            // Dùng Math.abs < 0.001 để tránh lỗi làm tròn số thập phân trong Javascript
+            if (Math.abs(etacDiff) < 0.001) {
+                etacText = `Hoàn thành đúng kế hoạch.`;
+            } else if (etacDiff > 0) {
+                etacText = `Cần thêm <strong>${fDec(etacDiff, 2)}</strong> tháng so với kế hoạch.`;
+            } else {
+                etacText = `Sớm hơn kế hoạch <strong>${fDec(Math.abs(etacDiff), 2)}</strong> tháng.`;
+            }
+            
+            let eacDiff = EAC - BAC;
+            let eacText = "";
+            if (Math.abs(eacDiff) < 0.001) {
+                eacText = `đúng bằng ngân sách ban đầu`;
+            } else if (eacDiff > 0) {
+                eacText = `vượt <strong>$${fNum(eacDiff)}</strong> so với ban đầu`;
+            } else {
+                eacText = `tiết kiệm <strong>$${fNum(Math.abs(eacDiff))}</strong> so với ban đầu`;
+            }
+
+            // 4. Sinh chuỗi HTML chứa công thức LaTeX
+            const html = `
+                <p>\\( BAC = ${fNum(BAC)} \\text{ (USD)} \\) - Tổng ngân sách dự án</p>
+                <p>\\( TTC = ${fNum(TTC)} \\text{ (month)} \\) - Kế hoạch hoàn thành</p>
+                <p>\\( PV = ${fNum(PV)} \\text{ (USD)} \\) - Giá trị theo kế hoạch</p>
+                <p>\\( AC = ${fNum(AC)} \\text{ (USD)} \\) - Chi phí thực tế</p>
+                <p>\\( EV = ${fNum(EV)} \\text{ (USD)} \\) - Giá trị đạt được</p>
+                
+                <hr class="my-4 border-gray-300">
+
+                <ul>
+                    <li>
+                        <strong>- Chênh lệch chi phí theo tiến độ (Schedule Variance – SV):</strong><br>
+                        &nbsp;&nbsp;&nbsp; \\( SV = EV - PV = ${fNum(EV)} - ${fNum(PV)} = ${fNum(SV)} \\text{ (USD)} \\)<br>
+                        &nbsp;&nbsp;&nbsp; Vì \\( SV ${SV < 0 ? '<' : (SV > 0 ? '>' : '=')} 0 \\) \\( \\Rightarrow \\) Dự án đang <strong>${svStatus}</strong>.
+                    </li>
+
+                    <li>
+                        <strong>- Chênh lệch chi phí thực tế theo ngân sách (Cost Variance – CV):</strong><br>
+                        &nbsp;&nbsp;&nbsp; \\( CV = EV - AC = ${fNum(EV)} - ${fNum(AC)} = ${fNum(CV)} \\text{ (USD)} \\)<br>
+                        &nbsp;&nbsp;&nbsp; Vì \\( CV ${CV < 0 ? '<' : (CV > 0 ? '>' : '=')} 0 \\) \\( \\Rightarrow \\) Dự án đang <strong>${cvStatus}</strong>.
+                    </li>
+
+                    <li>
+                        <strong>- Chỉ số đánh giá tiến độ tại thời điểm đánh giá (Schedule Performance Index – SPI):</strong><br>
+                        &nbsp;&nbsp;&nbsp; \\( SPI = \\frac{EV}{PV} = \\frac{${fNum(EV)}}{${fNum(PV)}} \\times 100\\% \\approx ${fDec(SPI * 100, 2)}\\% \\)<br>
+                        &nbsp;&nbsp;&nbsp; \\( \\Rightarrow \\) ${spiText}
+                    </li>
+
+                    <li>
+                        <strong>- Chỉ số đánh giá chi phí tại thời điểm đánh giá (Cost Performance Index – CPI):</strong><br>
+                        &nbsp;&nbsp;&nbsp; \\( CPI = \\frac{EV}{AC} = \\frac{${fNum(EV)}}{${fNum(AC)}} \\times 100\\% \\approx ${fDec(CPI * 100, 2)}\\% \\)<br>
+                        &nbsp;&nbsp;&nbsp; \\( \\Rightarrow \\) Hiệu suất sử dụng ngân sách đang đạt khoảng <strong>${fDec(CPI * 100, 2)}%</strong>. (Mỗi 1 đồng chi ra thu về \\( ${fDec(CPI, 4)} \\) đồng giá trị).<br>
+                        &nbsp;&nbsp;&nbsp; \\( \\Rightarrow \\) ${cpiText}
+                    </li>
+
+                    <li>
+                        <strong>- Thời gian dự kiến hoàn thành dự án (Estimate Time at Completion - ETAC):</strong><br>
+                        &nbsp;&nbsp;&nbsp; \\( ETAC = \\frac{TTC}{SPI} = \\frac{${fNum(TTC)}}{${fDec(SPI, 4)}} = ${fDec(ETAC, 2)} \\text{ (month)} \\)<br>
+                        &nbsp;&nbsp;&nbsp; \\( \\Rightarrow \\) Nếu tốc độ làm việc tiếp tục như hiện tại, dự án sẽ mất khoảng <strong>${fDec(ETAC, 2)} tháng</strong> để hoàn thành. ${etacText}
+                    </li>
+
+                    <li>
+                        <strong>- Ngân sách dự kiến (Estimate at Completion – EAC) để hoàn thành dự án:</strong><br>
+                        &nbsp;&nbsp;&nbsp; \\( EAC = \\frac{BAC}{CPI} = \\frac{${fNum(BAC)}}{${fDec(CPI, 4)}} = ${fNum(EAC, 2)} \\text{ (USD)} \\)<br>
+                        &nbsp;&nbsp;&nbsp; \\( \\Rightarrow \\) Nếu tiếp tục với hiệu suất chi phí như hiện tại, tổng ngân sách dự kiến để hoàn thành dự án sẽ là <strong>$${fNum(EAC, 2)}</strong> (${eacText}).
+                    </li>
+                </ul>
+            `;
+
+            // 5. Đưa HTML vào DOM
+            const container = document.getElementById('solution-container');
+            const content = document.getElementById('solution-content');
+            
+            content.innerHTML = html;
+            container.classList.remove('hidden');
+
+            // 6. Yêu cầu MathJax render lại các công thức toán học trong DOM
+            if (window.MathJax && window.MathJax.typesetPromise) {
+                MathJax.typesetPromise([content]).catch(function (err) {
+                    console.error('MathJax error:', err.message);
+                });
+            }
+        }
+
+        // Tự động tính toán lần đầu khi load trang (với dữ liệu mặc định)
+        window.addEventListener('load', () => {
+            // Đợi MathJax load xong rồi mới chạy
+            setTimeout(calculateEVM, 500); 
+        });
+    </script>
+</body>
+</html>
